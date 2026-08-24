@@ -129,6 +129,7 @@ def chat_completions(req: ChatCompletionRequest) -> ChatCompletionResponse:
         return_tensors="pt",
         return_dict=True,
     )
+    print(type(encoded))
 
     input_ids = encoded["input_ids"]
 
