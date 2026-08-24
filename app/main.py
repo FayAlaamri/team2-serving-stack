@@ -122,11 +122,15 @@ def chat_completions(req: ChatCompletionRequest) -> ChatCompletionResponse:
     Generation blocks the event loop this week. That is acceptable: week 3's
     engine owns concurrency. Name it, do not solve it here.
     """
-    input_ids = tokenizer.apply_chat_template(
-    [m.model_dump() for m in req.messages],
-    add_generation_prompt=True,
-    return_tensors="pt",
-)
+
+    encoded = tokenizer.apply_chat_template(
+        [m.model_dump() for m in req.messages],
+        add_generation_prompt=True,
+        return_tensors="pt",
+        return_dict=True,
+    )
+
+    input_ids = encoded["input_ids"]
 
     prompt_tokens = input_ids.shape[1]
 
