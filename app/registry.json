@@ -1,0 +1,14 @@
+{
+  "qwen-0.5b": {
+    "repo": "Qwen/Qwen2.5-0.5B-Instruct",
+    "params_b": 0.5,
+    "dtype": "float32",
+    "notes": "tiny CPU-friendly instruct model"
+  },
+  "tinyllama": {
+    "repo": "TinyLlama/TinyLlama-1.1B-Chat-v1.0",
+    "params_b": 1.1,
+    "dtype": "float32",
+    "notes": "small chat model"
+  }
+}
