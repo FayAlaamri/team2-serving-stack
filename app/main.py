@@ -13,6 +13,8 @@ Model: Qwen/Qwen2.5-0.5B-Instruct (about 0.5B params; loads on CPU in seconds
 once cached). The first ever load downloads weights; the prep-week verify-env
 pass pre-seeded the Hugging Face cache, so a cached load is fast.
 """
+# 	test cache change
+#       second cache test
 from __future__ import annotations
 
 import os
