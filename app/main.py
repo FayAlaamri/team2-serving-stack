@@ -16,7 +16,7 @@ import time
 import uuid
 
 import torch
-from fastapi import FastAPI
+from fastapi import FastAPI, Header, HTTPException
 from transformers import AutoModelForCausalLM, AutoTokenizer
 
 from schemas import (
@@ -36,7 +36,41 @@ MODEL_ID = os.environ.get(
     "Qwen/Qwen2.5-0.5B-Instruct",
 )
 
+# W2D5: API key for protecting /v1/* endpoints.
+# If empty, the API stays open for backwards compatibility.
+API_KEY = os.environ.get("API_KEY", "")
+
+# W2D5: Maximum number of tokens a client may generate.
+MAX_TOKENS = int(os.environ.get("MAX_TOKENS", "256"))
+
 app = FastAPI(title="serving-stack", version="wk2")
+
+
+# ---------------------------------------------------------------------------
+# W2D5: API key protection
+# ---------------------------------------------------------------------------
+
+if not API_KEY:
+    print(
+        "WARNING: API_KEY is not set. "
+        "The /v1 API is running WITHOUT authentication."
+    )
+
+
+def require_api_key(
+    authorization: str | None = Header(default=None),
+) -> None:
+    """Require Bearer authentication for /v1/* endpoints."""
+
+    # Keep old labs compatible when API_KEY is not configured.
+    if not API_KEY:
+        return
+
+    if authorization != f"Bearer {API_KEY}":
+        raise HTTPException(
+            status_code=401,
+            detail="Unauthorized",
+        )
 
 
 # ---------------------------------------------------------------------------
@@ -80,6 +114,8 @@ print(f"model ready on {device}")
 def health() -> HealthResponse:
     """Liveness and readiness endpoint."""
 
+    # W2D5:
+    # /health intentionally stays open so health probes do not need a key.
     return HealthResponse(
         status="ok",
         model=MODEL_ID,
@@ -91,8 +127,13 @@ def health() -> HealthResponse:
 # ---------------------------------------------------------------------------
 
 @app.get("/v1/models", response_model=ModelList)
-def list_models() -> ModelList:
+def list_models(
+    authorization: str | None = Header(default=None),
+) -> ModelList:
     """List the model served by this API."""
+
+    # W2D5: protect /v1/* with the API key.
+    require_api_key(authorization)
 
     card = ModelCard(
         id=MODEL_ID,
@@ -112,25 +153,35 @@ def list_models() -> ModelList:
 )
 def chat_completions(
     req: ChatCompletionRequest,
+    authorization: str | None = Header(default=None),
 ) -> ChatCompletionResponse:
     """Generate an OpenAI-compatible chat completion."""
 
-    input_ids = tokenizer.apply_chat_template(
+    # W2D5: protect /v1/* with the API key.
+    require_api_key(authorization)
+
+    # W2D5:
+    # Silently clamp a client's requested max_tokens to the server limit.
+    max_tokens = min(req.max_tokens, MAX_TOKENS)
+
+    # Newer transformers versions can return a BatchEncoding.
+    # Ask for a dictionary and extract the input_ids tensor.
+    encoded = tokenizer.apply_chat_template(
         [m.model_dump() for m in req.messages],
         add_generation_prompt=True,
         return_tensors="pt",
+        return_dict=True,
     )
 
-    # IMPORTANT FOR W2D4:
-    # The input tensor must be on the same device as the model.
-    input_ids = input_ids.to(device)
+    # Extract the real tensor and move it to the same device as the model.
+    input_ids = encoded["input_ids"].to(device)
 
     prompt_tokens = input_ids.shape[1]
 
     with torch.no_grad():
         out = model.generate(
             input_ids,
-            max_new_tokens=req.max_tokens,
+            max_new_tokens=max_tokens,
             do_sample=req.temperature > 0,
             temperature=req.temperature if req.temperature > 0 else None,
         )
@@ -146,7 +197,7 @@ def chat_completions(
 
     finish_reason = (
         "length"
-        if completion_tokens >= req.max_tokens
+        if completion_tokens >= max_tokens
         else "stop"
     )
 
