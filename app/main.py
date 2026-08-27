@@ -220,3 +220,27 @@ def chat_completions(
             total_tokens=prompt_tokens + completion_tokens,
         ),
     )
+
+
+@app.post("/v1/embeddings")
+def embeddings(
+    payload: dict,
+    authorization: str | None = Header(default=None),
+):
+    """GPU-only embeddings endpoint."""
+
+    require_api_key(authorization)
+
+    if device != "cuda":
+        raise HTTPException(
+            status_code=400,
+            detail=(
+                "Embeddings require a GPU-backed instance; "
+                "this instance is running in CPU-fallback mode."
+            ),
+        )
+
+    return {
+        "vector": [0.1] * 8,
+        "device_used": device,
+    }
